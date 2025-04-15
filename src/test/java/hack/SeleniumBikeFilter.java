@@ -1,36 +1,25 @@
 package hack;
 
 import java.text.DateFormat;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
-import org.openqa.selenium.By;
-import org.openqa.selenium.JavascriptExecutor;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
-import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.*;
 import org.openqa.selenium.support.PageFactory;
 import org.openqa.selenium.support.FindBy;
-import org.openqa.selenium.support.ui.Select;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
+import org.testng.annotations.*;
+
+import models.Bike;
+import utilities.DriverSetup;
 
 public class SeleniumBikeFilter {
-    public SeleniumBikeFilter() {
-    }
-
-    public SeleniumBikeFilter(WebDriver driver) {
-        this.driver = driver;
-        PageFactory.initElements(driver, this); 
-    }
-
+    
     private WebDriver driver;
-    private SeleniumBikeFilter page;
-
+    
+    // Page Factory Elements
     @FindBy(linkText = "NEW BIKES")
     private WebElement newBikesLink;
 
@@ -40,104 +29,127 @@ public class SeleniumBikeFilter {
     @FindBy(css = ".lnk-c[data-track-label='view-all-bike'][title='All Upcoming Bikes']")
     private WebElement upcomingBikesLink;
 
-    @FindBy(xpath = "/a[Honda]")
+    @FindBy(xpath = "//a[text()='Honda']")
     private WebElement brand;
 
-    @FindBy(xpath = "//span[text()='Read More']")
-    private WebElement readMoreElement;
+    @FindBy(css = ".lnk-hvr.block.of-hid.h-height")
+    private List<WebElement> upcomingBikes;
+
+    @FindBy(css = ".b.fnt-15")
+    private List<WebElement> bikePrices;
+
+    @FindBy(css = ".clr-try.fnt-14")
+    private List<WebElement> bikeDates;
+
+    public SeleniumBikeFilter() {
+        // Default constructor (necessary for TestNG instantiation)
+    }
+
+    public SeleniumBikeFilter(WebDriver driver) {
+        this.driver = driver;
+        PageFactory.initElements(driver, this); 
+    }
 
     @BeforeClass
     public void setUp() {
-        driver = new ChromeDriver();
-        driver.manage().window().maximize();
+        driver= DriverSetup.getDriver();
         driver.get("https://www.zigwheels.com/");
-        page = new SeleniumBikeFilter(driver);
+        PageFactory.initElements(driver, this);
     }
 
     @Test(priority = 1)
     public void navigateToUpcomingBikes() {
-        page.newBikesLink.click();
-
+        newBikesLink.click();
+        
         JavascriptExecutor js = (JavascriptExecutor) driver;
-        js.executeScript("arguments[0].click();", page.upcomingTab);
-        js.executeScript("arguments[0].click();", page.upcomingBikesLink);
+        js.executeScript("arguments[0].click();", upcomingTab);
+        js.executeScript("arguments[0].click();", upcomingBikesLink);
 
         Assert.assertTrue(driver.getCurrentUrl().contains("upcoming-bikes"), "Navigation to 'Upcoming Bikes' failed!");
     }
-//
-//    @Test(priority = 2)
-//    public void validateDropdownOptions() {
-//        Select select = new Select(page.brand);
-//        List<WebElement> options = select.getOptions();
-//
-//        List<String> expectedManufacturers = List.of("TVS", "Bajaj", "Honda", "Hero Moto Corp", "Suzuki", "Yamaha");
-//        List<String> actualManufacturers = options.stream()
-//                .map(WebElement::getText)
-//                .collect(Collectors.toList());
-//
-//        Assert.assertTrue(actualManufacturers.containsAll(expectedManufacturers), "Dropdown manufacturers are missing!");
-//    }
 
     @Test(priority = 2)
-    public void filterHondaBikes() {
-        page.brand.click();
-
+    public void verifyHondaBikeFiltering() {
         JavascriptExecutor js = (JavascriptExecutor) driver;
-        js.executeScript("arguments[0].style.border='3px solid red'", page.readMoreElement);
-        js.executeScript("arguments[0].click();", page.readMoreElement);
-
-        List<WebElement> bikeRows = driver.findElements(By.cssSelector("table tbody tr"));
-
-        List<Bike> affordableUpcomingBikes = bikeRows.stream()
-                .map(SeleniumBikeFilter::extractBikeDetails)
-                .filter(bike -> bike != null && bike.getNumericPrice() < 400000)
-                .collect(Collectors.toList());
-
-        System.out.println("Affordable Upcoming Honda Bikes (under 4L):");
-        affordableUpcomingBikes.forEach(System.out::println);
-
-        Assert.assertFalse(affordableUpcomingBikes.isEmpty(), "No affordable Honda bikes found under 4L!");
+        js.executeScript("arguments[0].click();", brand);
+        Assert.assertFalse(upcomingBikes.isEmpty(), "No Honda bikes found after applying filter!");
     }
 
-//    @Test(priority = 4)
-//    public void validateExtractedBikeData() {
-//        WebElement firstRow = driver.findElement(By.cssSelector("table tbody tr:nth-child(1)"));
-//        Bike bike = extractBikeDetails(firstRow);
-//
-//        Assert.assertNotNull(bike, "Bike data extraction failed!");
-//        Assert.assertFalse(bike.getName().isEmpty(), "Bike name is missing!");
-//        Assert.assertFalse(bike.getPrice().isEmpty(), "Bike price is missing!");
-//    }
+    @Test(priority = 3)
+    public void filterHondaBikes() {
+        List<Bike> affordableHondaBikes = new ArrayList<>();
+        List<Bike> testBikes = new ArrayList<>();
+        
+        System.out.println("Affordable Upcoming Honda Bikes (under 4L):");
+
+        // Validate List Sizes Before Iterating
+        if (upcomingBikes.size() != bikePrices.size() || upcomingBikes.size() != bikeDates.size()) {
+            throw new RuntimeException("Mismatch in extracted bike details! Check XPath selectors.");
+        }
+
+        for (int i = 0; i < upcomingBikes.size(); i++) {
+            String priceText = bikePrices.get(i).getText();
+            String bikeName = upcomingBikes.get(i).getText();
+            String launchDate = formatReleaseDate(bikeDates.get(i).getText());
+
+            testBikes.add(new Bike(bikeName, priceText, launchDate));
+        }
+
+        affordableHondaBikes = testBikes.stream()
+            .filter(bike -> processPrice(bike.getPrice()) < 4)
+            .collect(Collectors.toList());
+
+        Assert.assertFalse(affordableHondaBikes.isEmpty(), "No affordable Honda bikes found under 4L!");
+
+        for (Bike bike : affordableHondaBikes) {
+            System.out.println(bike);
+        }
+    }
 
     @AfterClass
     public void tearDown() {
-        if (driver != null) {
-            driver.quit();
-        }
+        DriverSetup.quitDriver();
     }
 
-    private static Bike extractBikeDetails(WebElement row) {
-        try {
-            String name = row.findElement(By.cssSelector("td:nth-child(1)")).getText();
-            String price = row.findElement(By.cssSelector("td:nth-child(2)")).getText();
-            String releaseDate = row.findElement(By.cssSelector("td:nth-child(3)")).getText();
-
-            String formattedDate = releaseDate.equalsIgnoreCase("Unrevealed") ? "Unrevealed" : formatReleaseDate(releaseDate);
-
-            return new Bike(name, price, formattedDate);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
+    // Format Date: Convert "Expected Launch : Jul 2025" -> "07/2025"
     private static String formatReleaseDate(String releaseDate) {
         try {
-            DateFormat inputFormat = new SimpleDateFormat("MMM yyyy");
+            releaseDate = releaseDate.replaceAll(".*?:", "").trim(); // Remove prefix like "Expected Launch :"
+            DateFormat inputFormat = new SimpleDateFormat("MMM yyyy", Locale.ENGLISH);
             DateFormat outputFormat = new SimpleDateFormat("MM/yyyy");
-            Date date = inputFormat.parse(releaseDate);
-            return outputFormat.format(date);
-        } catch (Exception e) {
+
+            return outputFormat.format(inputFormat.parse(releaseDate));
+        } catch (ParseException e) {
+            System.err.println("Error parsing date: " + releaseDate);
             return "Invalid Date";
         }
     }
+
+    // Process Price: Convert "Rs. 79,000" -> 0.79L, Keep Original String Format
+    public static double processPrice(String priceText) {
+        if (priceText == null || priceText.isEmpty()) {
+            System.err.println("Price is missing or invalid.");
+            return -1; // Indicator of failure
+        }
+
+        // Remove unwanted text (keeping only digits and a single decimal)
+        String cleanPrice = priceText.replaceAll("[^0-9.]", "").trim();
+
+        // Ensure the first character isn't an unexpected period (like ".6.00")
+        if (cleanPrice.startsWith(".")) {
+            cleanPrice = cleanPrice.substring(1);
+        }
+
+        try {
+            if (priceText.contains(",")) {  
+                return Double.parseDouble(cleanPrice) / 100000; // Convert 79,000 to 0.79L
+            } else {
+                return Double.parseDouble(cleanPrice); // Already in Lakh format
+            }
+        } catch (NumberFormatException e) {
+            System.err.println("Error parsing price: " + priceText + " | Cleaned price: " + cleanPrice);
+            return -1;
+        }
+    }
+
 }
